@@ -1,0 +1,149 @@
+#PARTIE 1
+
+##A) Partie Data Frame
+
+case class Cast(cdatetime:String,address:String,district:Int,beat:String,grid:Int,crimedescr:String,ucr_ncic_code:Int,latitude:Float,longitude:Float)
+
+val file = sc.textFile("/res/spark_assignment/crimes.csv").
+mapPartitionsWithIndex { (idx, iter) => if (idx == 0) iter.drop(1) else
+iter }
+
+val casts = file.map(line => {
+val l = line.split(",")
+Cast(l(0).split(" ")(0),l(1), l(2).toInt, l(3),l(4).toInt,l(5),l(6).toInt,l(7).toFloat,l(8).toFloat)
+})
+
+val castsDF = casts.toDF 
+castsDF.printSchema
+castsDF.show 
+
+Requête en Data Frame
+
+###1) Question 1
+
+What is the crime that happens the most in Sacramento ?
+
+castsDF.groupBy('ucr_ncic_code).count().orderBy('count.desc).show(1)
+
+###2) Question 2
+
+  Give the 3 days with the highest crime average
+
+ castsDF.groupBy('cdatetime).count().orderBy('count.desc).show(3)
+
+###3) Question 3
+
+Calculate the average of each crime per day 
+
+castsDF.groupBy('ucr_ncic_code).(count()/31).orderBy('count.desc).show()
+
+##B) Partie RDD
+
+Prépation des données 
+
+val crimeFile = "crimes.csv"
+val crimeData = sc.textFile(crimeFile).cache()
+
+
+
+crimeData.mapPartitions(lines => {
+         val parser = new CSVParser(',')
+         lines.map(line => {
+           parser.parseLine(line).mkString(",")
+         })
+       }).take(5).foreach(println)
+
+def dropHeader(data: RDD[String]): RDD[String] = {
+         data.mapPartitionsWithIndex((idx, lines) => {
+           if (idx == 0) {
+             lines.drop(1)
+           }
+           lines
+         })
+       }
+
+val withoutHeader: RDD[String] = dropHeader(crimeData)
+
+withoutHeader.mapPartitions(lines => {
+         val parser = new CSVParser(',')
+         lines.map(line => {
+           parser.parseLine(line).mkString(",")
+         })
+       }).take(5).foreach(println)
+
+
+
+
+
+
+crimeData.map(line => {
+         val parser = new CSVParser(',')
+         parser.parseLine(line).mkString(",")
+       }).take(5).foreach(println)
+
+
+
+
+
+withoutHeader.mapPartitions(lines => {
+         val parser=new CSVParser(',')
+         lines.map(line => {
+           val columns = parser.parseLine(line)
+           Array(columns(6)).mkString(",")
+         })
+       }).countByValue().toList.sortBy(-_._2).foreach(println)
+
+
+###1) Question 1
+
+What is the crime that happens the most in Sacramento ?
+
+    crimeData.mapPartitions(lines => {
+      val parser=new CSVParser(',');
+      lines.map(line => {
+        val columns = parser.parseLine(line)
+        Array(columns(5)).mkString(",")
+      })
+    }).countByValue().maxBy(_._2)._1;
+
+
+
+###2) Question 2
+
+  Give the 3 days with the highest crime average
+
+    crimeData.mapPartitions(lines => {
+      val parser=new CSVParser(',');
+      lines.map(line => {
+      	val columns = parser.parseLine(line)
+      	Array(columns(0).split(" ")(0)).mkString(",")         
+
+          })
+    }).countByValue().toList.sortBy(-_._2).take(3).foreach(println)
+
+
+
+
+###3) Question 3
+
+Calculate the average of each crime per day 
+
+crimeData.mapPartitions(lines => {
+      val parser=new CSVParser(',');
+      lines.map(line => {
+        val columns = parser.parseLine(line)
+        Array(columns(5)).mkString(",")
+      })
+    }).(countByValue()/31).maxBy(_._2)._1;
+
+
+
+
+#Partie 2
+
+
+Il y a 31 jours et 6 districts
+
+castsDF.groupBy('crimedescr).(count()/186).orderBy('count.desc).repartition(1).write.format("com.databricks.spark.csv").save("MCByDayByD.csv")
+
+Nous obtenons un cvs du nom de MCByDayByD.csv avec moyenne des crimes par jour par secteur.
